@@ -9,7 +9,6 @@ from .builder import DATASETS
 class VideoDataset(BaseDataset):
     """Video dataset for action recognition.
 
-    The dataset loads raw videos and apply specified transforms to return a
     dict containing the frame tensors and other information.
 
     The ann_file is a text file with multiple lines, and each line indicates
