@@ -97,13 +97,17 @@ class VideoAudioRecognizer(nn.Module):
 
     def forward_train(self, imgs, audios, labels, **kwargs):
         """Defines the computation performed at every call when training."""
-        
+    
+
+
         losses = dict()
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
         audios = audios.reshape((-1, ) + audios.shape[2:])
+        # print(imgs.shape)
+        print(audios.shape)
 
         video_features = self.model_video.extract_feat(imgs)
-        audio_features = self.model_audio.extract_feat(audios)
+        audio_features = self.model_audio.extract_feat(audios) # (batch, 1,128,32000)
 
         # TODO: Don't just flatten or avg pool, think about the general way to deal with this, 
         # TODO: use mmaction2 Head to handle final features (pre cat).  
@@ -112,6 +116,7 @@ class VideoAudioRecognizer(nn.Module):
         video_features = video_features.view(video_features.size(0), -1)
         audio_features = self.model_audio.cls_head.avg_pool(audio_features)
         audio_features = audio_features.view(audio_features.size(0), -1)
+        # audio_features = torch.rand(audios.size(0), 1024).cuda()
 
         cat_features = torch.cat([video_features, audio_features], dim=1)
         

@@ -1067,6 +1067,9 @@ class DecordInit:
         container = decord.VideoReader(file_obj, num_threads=self.num_threads)
         results['video_reader'] = container
         results['total_frames'] = len(container)
+        if results['total_frames'] % 2 == 1:
+            results['total_frames'] = results['total_frames'] - 1
+
         return results
 
     def __repr__(self):
@@ -1087,7 +1090,7 @@ class DecordDecode:
 
     Args:
         mode (str): Decoding mode. Options are 'accurate' and 'efficient'.
-            If set to 'accurate', it will decode videos into accurate frames.
+            If set to 'accurate', it will decod e videos into accurate frames.
             If set to 'efficient', it will adopt fast seeking but only return
             key frames, which may be duplicated and inaccurate, and more
             suitable for large scene-based video datasets. Default: 'accurate'.
@@ -1112,7 +1115,11 @@ class DecordDecode:
         frame_inds = results['frame_inds']
 
         if self.mode == 'accurate':
-            imgs = container.get_batch(frame_inds).asnumpy()
+            try:
+                imgs = container.get_batch(frame_inds).asnumpy()
+            except Exception as e:
+                print(results)
+                raise e
             imgs = list(imgs)
         elif self.mode == 'efficient':
             # This mode is faster, however it always returns I-FRAME

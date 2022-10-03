@@ -7,7 +7,7 @@ class SecureDict(dict):
         self.unauthorized_keys = kwargs.pop("unauthorized_keys", [])
         super().__init__(*args, **kwargs)
     def __setitem__(self, key,val) -> None:
-        if key in self.unauthorized_keys:
+        if key in self.unauthorized_keys and super().__getitem__(key) != val:
             raise KeyError(f"{key} in unauthorized keys, so it cannot be changed")
         super().__setitem__(key,val)
 

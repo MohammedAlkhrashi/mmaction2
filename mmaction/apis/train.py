@@ -62,7 +62,9 @@ def train_model(model,
                 validate=False,
                 test=dict(test_best=False, test_last=False),
                 timestamp=None,
-                meta=None):
+                meta=None,
+                val_dataset=None
+                ):
     """Train model entry function.
 
     Args:
@@ -204,23 +206,40 @@ def train_model(model,
         else:
             runner.register_hook(DistSamplerSeedHook())
 
-    if validate:
+    # if validate:
+    #     eval_cfg = cfg.get('evaluation', {})
+    #     val_dataset = build_dataset(cfg.data.val, dict(test_mode=True))
+    #     dataloader_setting = dict(
+    #         videos_per_gpu=cfg.data.get('videos_per_gpu', 1),
+    #         workers_per_gpu=cfg.data.get('workers_per_gpu', 1),
+    #         persistent_workers=cfg.data.get('persistent_workers', False),
+    #         # cfg.gpus will be ignored if distributed
+    #         num_gpus=len(cfg.gpu_ids),
+    #         dist=distributed,
+    #         shuffle=False)
+    #     dataloader_setting = dict(dataloader_setting,
+    #                               **cfg.data.get('val_dataloader', {}))
+    #     val_dataloader = build_dataloader(val_dataset, **dataloader_setting)
+    #     eval_hook = DistEvalHook(val_dataloader, **eval_cfg) if distributed \
+    #         else EvalHook(val_dataloader, **eval_cfg)
+    #     runner.register_hook(eval_hook, priority='LOW')
+    if val_dataset is not None:
         eval_cfg = cfg.get('evaluation', {})
-        val_dataset = build_dataset(cfg.data.val, dict(test_mode=True))
         dataloader_setting = dict(
-            videos_per_gpu=cfg.data.get('videos_per_gpu', 1),
-            workers_per_gpu=cfg.data.get('workers_per_gpu', 1),
-            persistent_workers=cfg.data.get('persistent_workers', False),
-            # cfg.gpus will be ignored if distributed
-            num_gpus=len(cfg.gpu_ids),
-            dist=distributed,
-            shuffle=False)
+        videos_per_gpu=cfg.data.get('videos_per_gpu', 1),
+        workers_per_gpu=cfg.data.get('workers_per_gpu', 1),
+        persistent_workers=cfg.data.get('persistent_workers', False),
+        # cfg.gpus will be ignored if distributed
+        num_gpus=len(cfg.gpu_ids),
+        dist=distributed,
+        shuffle=False)
         dataloader_setting = dict(dataloader_setting,
                                   **cfg.data.get('val_dataloader', {}))
         val_dataloader = build_dataloader(val_dataset, **dataloader_setting)
         eval_hook = DistEvalHook(val_dataloader, **eval_cfg) if distributed \
             else EvalHook(val_dataloader, **eval_cfg)
         runner.register_hook(eval_hook, priority='LOW')
+        
 
     if cfg.resume_from:
         runner.resume(cfg.resume_from)
