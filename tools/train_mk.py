@@ -6,6 +6,7 @@ import os
 import os.path as osp
 import time
 import warnings
+from mmaction.datasets.audio_visual_dataset_mk import AudioVisualDatasetMk
 
 import mmcv
 import torch
@@ -192,7 +193,6 @@ def settings_from_config(args, cfg, config_path):
     model = build_model(
         cfg.model, train_cfg=cfg.get("train_cfg"), test_cfg=cfg.get("test_cfg")
     )
-
     if len(cfg.module_hooks) > 0:
         register_module_hooks(model, cfg.module_hooks)
 
@@ -201,7 +201,7 @@ def settings_from_config(args, cfg, config_path):
     #     assert isinstance(cfg.data.train, list)
     #     datasets = [build_dataset(dataset) for dataset in cfg.data.train]
     # else:
-    # datasets = [build_dataset(cfg.data.train)]
+        # datasets = [build_dataset(cfg.data.train)]
 
     # if len(cfg.workflow) == 2:
     #     # For simplicity, omnisource is not compatible with val workflow,
@@ -227,41 +227,51 @@ def settings_from_config(args, cfg, config_path):
 
 
 def build_dataset_mk(cfg_video, cfg_audio):
+    def combine_pipelines(video_pipleline, audio_pipleline):
+        initial_keys = [
+            # "total_frames",
+            "audio_path",
+            "filename",
+            "frame_dir",
+            "offset",
+            "label",
+            "start_index",
+            "modality"
+        ] # Initial keys that are used to initiate the pipeline. 
+        final_pipeline = (
+            [EnsureFixedKeys(keys=initial_keys)]
+            + audio_pipleline[:-2]
+            + [EnsureFixedKeys(keys=["audios"])] 
+            + video_pipleline[:-2]
+        )
+        final_pipeline = final_pipeline + [
+            dict(type="Collect", keys=["imgs", "audios", "label"], meta_keys=[]),
+            dict(type="ToTensor", keys=["imgs", "audios", "label"]),
+        ]
+        
+        return final_pipeline
 
-    ann_file = cfg_video.ann_file_train
-    prefix = cfg_video.data_root
+
+    video_prefix = cfg_video.data_root
     audio_prefix = cfg_audio.data_root
 
-    video_pipleline = cfg_video.train_pipeline
-    audio_pipleline = cfg_audio.train_pipeline
-
-    initial_keys = [
-        "total_frames",
-        "audio_path",
-        "filename",
-        "frame_dir",
-        "offset",
-        "label",
-        "start_index"
-    ] # Initial keys that are used to initiate the pipeline. 
-    final_pipeline = (
-        [EnsureFixedKeys(keys=initial_keys)]
-        + video_pipleline[:-2]
-        + [EnsureFixedKeys(keys=["imgs"])] 
-        + audio_pipleline[:-2]
-    )
-    final_pipeline = final_pipeline + [
-        dict(type="Collect", keys=["imgs", "audios", "label"], meta_keys=[]),
-        dict(type="ToTensor", keys=["imgs", "audios", "label"]),
-    ]
-
-    return AudioVisualDataset(
-        ann_file=ann_file,
-        data_prefix=prefix,
-        pipeline=final_pipeline,
+    train_ann_file = cfg_video.ann_file_train
+    train_set = AudioVisualDatasetMk(
+        ann_file=train_ann_file,
+        video_prefix=video_prefix,
         audio_prefix=audio_prefix,
+        pipeline=combine_pipelines(cfg_video.train_pipeline, cfg_audio.train_pipeline),
     )
 
+    val_ann_file = cfg_video.ann_file_val
+    val_set = AudioVisualDatasetMk(
+        ann_file=val_ann_file,
+        video_prefix=video_prefix,
+        audio_prefix=audio_prefix,
+        pipeline=combine_pipelines(cfg_video.val_pipeline, cfg_audio.val_pipeline),
+    )
+
+    return train_set,val_set
 
 def build_model_mk(model_video, model_audio):
     return VideoAudioRecognizer(model_video, model_audio)
@@ -292,10 +302,13 @@ def combine_optimizers_config(cfg_video,cfg_audio):
 
     combined_optim_config['type'] = final_optim_type
     combined_full_config['optimizer'] = combined_optim_config
+    
     return combined_full_config
 
 def final_settins_from_configs(args, cfg_video, cfg_audio):
-    dataset_av = [build_dataset_mk(cfg_video, cfg_audio)]
+    train_dataset_av, val_dataset_av= build_dataset_mk(cfg_video, cfg_audio)
+    train_dataset_av = [train_dataset_av]
+
     (
         distributed_video,
         timestamp_video,
@@ -303,7 +316,16 @@ def final_settins_from_configs(args, cfg_video, cfg_audio):
         model_video,
         test_option_video,
     ) = settings_from_config(args, cfg_video, args.config_video)
-    _, _, _, model_audio, _ = settings_from_config(args, cfg_audio, args.config_audio)
+    # _, _, _, model_audio, _ = settings_from_config(args, cfg_audio, args.config_audio)
+
+
+    cfg_audio.setdefault("module_hooks", [])
+    model_audio = build_model(
+        cfg_audio.model, train_cfg=cfg_audio.get("train_cfg"), test_cfg=cfg_audio.get("test_cfg")
+    )
+    if len(cfg_audio.module_hooks) > 0:
+        register_module_hooks(model_audio, cfg_audio.module_hooks)
+
 
 
 
@@ -314,9 +336,11 @@ def final_settins_from_configs(args, cfg_video, cfg_audio):
         timestamp_video,
         meta_video,
         model_av,
-        dataset_av,
+        train_dataset_av,
+        val_dataset_av,
         test_option_video,
         config_final,
+        
     )
 
 
@@ -330,20 +354,22 @@ def main():
         timestamp,
         meta,
         model,
-        datasets,
+        train_datasets,
+        val_dataset,
         test_option,
         cfg,
     ) = final_settins_from_configs(args, cfg_video, cfg_audio)
 
     train_model(
         model,
-        datasets,
+        train_datasets,
         cfg,
         distributed=distributed,
         validate=args.validate,
         test=test_option,
         timestamp=timestamp,
         meta=meta,
+        val_dataset=val_dataset
     )
 
 
